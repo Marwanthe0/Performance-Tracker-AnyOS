@@ -1,0 +1,11 @@
+{
+  "name": "Ubuntu Performance Track",
+  "description": "Live RAM, CPU, and Performance Tracking in the GNOME Top Bar",
+  "uuid": "performancetrack@ubuntu.local",
+  "shell-version": [
+    "45",
+    "46"
+  ],
+  "url": "https://github.com/ubuntu/performance-track",
+  "version": 1
+}

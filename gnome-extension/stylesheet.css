@@ -1,0 +1,18 @@
+.performancetrack-panel-label {
+    font-weight: bold;
+    font-size: 11pt;
+    padding: 0 4px;
+}
+
+.performancetrack-section-header {
+    font-weight: bold;
+    font-size: 10pt;
+    color: #3584e4;
+    padding: 4px 6px;
+}
+
+.performancetrack-stat-row {
+    font-family: monospace;
+    font-size: 9.5pt;
+    padding: 2px 6px;
+}

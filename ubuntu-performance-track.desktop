@@ -1,0 +1,17 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Ubuntu Performance Track
+GenericName=System Performance Monitor
+Comment=Real-time RAM, CPU, and Performance Tracking in the Ubuntu Topbar
+Exec=ubuntu-performance-track
+Icon=performance-track
+Terminal=false
+Categories=System;Monitor;Utility;
+Keywords=system;cpu;ram;memory;disk;network;performance;track;monitor;topbar;
+StartupNotify=true
+Actions=Dashboard;
+
+[Desktop Action Dashboard]
+Name=Open Performance Track Dashboard
+Exec=ubuntu-performance-track --dashboard

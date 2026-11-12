@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d3748"/>
+      <stop offset="100%" stop-color="#1a202c"/>
+    </linearGradient>
+    <linearGradient id="cpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e53e3e"/>
+      <stop offset="100%" stop-color="#dd6b20"/>
+    </linearGradient>
+    <linearGradient id="ramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3182ce"/>
+      <stop offset="100%" stop-color="#00b4d8"/>
+    </linearGradient>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38a169"/>
+      <stop offset="50%" stop-color="#48bb78"/>
+      <stop offset="100%" stop-color="#68d391"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bgGrad)" filter="url(#shadow)" stroke="#4a5568" stroke-width="2"/>
+
+  <!-- CPU Icon (top left) -->
+  <g transform="translate(22, 22)">
+    <rect x="4" y="4" width="28" height="28" rx="4" fill="url(#cpuGrad)" />
+    <rect x="10" y="10" width="16" height="16" rx="2" fill="#ffffff" opacity="0.9"/>
+    <!-- CPU pins -->
+    <path d="M8,1 L8,4 M14,1 L14,4 M20,1 L20,4 M26,1 L26,4
+             M8,32 L8,35 M14,32 L14,35 M20,32 L20,35 M26,32 L26,35
+             M1,8 L4,8 M1,14 L4,14 M1,20 L4,20 M1,26 L4,26
+             M32,8 L35,8 M32,14 L35,14 M32,20 L35,20 M32,26 L35,26" 
+          stroke="#dd6b20" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- RAM Icon (top right) -->
+  <g transform="translate(70, 22)">
+    <rect x="2" y="8" width="34" height="18" rx="3" fill="url(#ramGrad)" />
+    <!-- RAM chips -->
+    <rect x="6" y="11" width="5" height="8" rx="1" fill="#ffffff" opacity="0.9"/>
+    <rect x="14" y="11" width="5" height="8" rx="1" fill="#ffffff" opacity="0.9"/>
+    <rect x="22" y="11" width="5" height="8" rx="1" fill="#ffffff" opacity="0.9"/>
+    <!-- RAM notch & pins -->
+    <rect x="4" y="26" width="30" height="2" fill="#ffd700"/>
+    <path d="M7,28 L7,30 M11,28 L11,30 M15,28 L15,30 M23,28 L23,30 M27,28 L27,30" 
+          stroke="#ffd700" stroke-width="2"/>
+  </g>
+
+  <!-- Performance Track Wave / Sparkline (bottom) -->
+  <g transform="translate(16, 68)">
+    <!-- Grid line -->
+    <line x1="4" y1="36" x2="92" y2="36" stroke="#4a5568" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <line x1="4" y1="18" x2="92" y2="18" stroke="#4a5568" stroke-width="1.5" stroke-dasharray="3,3"/>
+    
+    <!-- Area under curve -->
+    <path d="M4,36 L4,30 L16,24 L28,32 L40,14 L52,22 L64,8 L76,18 L88,4 L88,36 Z" 
+          fill="url(#waveGrad)" opacity="0.25"/>
+    
+    <!-- Wave curve -->
+    <path d="M4,30 L16,24 L28,32 L40,14 L52,22 L64,8 L76,18 L88,4" 
+          fill="none" stroke="url(#waveGrad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Current pulse dot -->
+    <circle cx="88" cy="4" r="4.5" fill="#68d391" stroke="#ffffff" stroke-width="1.5"/>
+  </g>
+</svg>
