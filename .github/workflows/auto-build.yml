@@ -1,0 +1,173 @@
+name: Cross-Platform Auto-Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install psutil pystray pillow pytest
+
+      - name: Run verification tests
+        run: |
+          python tests/test_monitor.py
+
+  build-windows:
+    name: Build Windows Executable & Installer
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller psutil pystray pillow
+
+      - name: Build Windows Executable
+        run: |
+          python build.py --target windows
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerformanceTracker-Windows-x64
+          path: |
+            dist/PerformanceTracker.exe
+            dist/PerformanceTracker-Windows-x64.zip
+            dist/install_performancetracker.bat
+
+  build-linux:
+    name: Build Linux Native Packages & Tarball
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies & tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip dpkg
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pyinstaller psutil pystray pillow
+
+      - name: Build Linux Installers (.deb, .run, .tar.gz)
+        run: |
+          python3 build.py --target linux
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerformanceTracker-Linux
+          path: |
+            dist/*.deb
+            dist/*.run
+            dist/*.tar.gz
+            dist/*uninstaller.sh
+
+  build-macos:
+    name: Build macOS Application Bundle
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies & PyInstaller
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pyinstaller psutil pystray pillow
+
+      - name: Build macOS Application
+        run: |
+          python3 build.py --target macos
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerformanceTracker-macOS
+          path: |
+            dist/*.zip
+
+  release:
+    name: Create GitHub Release & Packages
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Organize Release Packages
+        run: |
+          mkdir -p packages/Windows packages/Linux packages/macOS
+          cp -f release-artifacts/PerformanceTracker-Windows-x64/* packages/Windows/ 2>/dev/null || true
+          cp -f release-artifacts/PerformanceTracker-Linux/* packages/Linux/ 2>/dev/null || true
+          cp -f release-artifacts/PerformanceTracker-macOS/* packages/macOS/ 2>/dev/null || true
+
+      - name: Release Packages to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "PC Performance Tracker v1.0.0"
+          tag_name: ${{ github.ref_name || 'v1.0.0' }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-artifacts/PerformanceTracker-Windows-x64/PerformanceTracker.exe
+            release-artifacts/PerformanceTracker-Windows-x64/PerformanceTracker-Windows-x64.zip
+            release-artifacts/PerformanceTracker-Linux/*.deb
+            release-artifacts/PerformanceTracker-Linux/*.run
+            release-artifacts/PerformanceTracker-Linux/*.tar.gz
+            release-artifacts/PerformanceTracker-macOS/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

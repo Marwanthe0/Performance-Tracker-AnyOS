@@ -3,11 +3,19 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# PyInstaller build artifacts
+build/
+*.spec
+
+# Local runtime configs
+.config/
+
 # Temporary and log files
 *.log
 /tmp/
 
 # OS generated
 .DS_Store
+Thumbs.db
 *.swp
 *~

@@ -1,152 +1,159 @@
-# Ubuntu Performance Track
+# PC Performance Tracker
 
-A high-performance, real-time system performance monitor designed specifically for **Ubuntu** (tested on Ubuntu 24.04 LTS and GNOME 46). It seamlessly displays live **CPU**, **RAM**, and **Performance Track (Network & Disk I/O throughput)** right on the **Ubuntu top bar**.
+[![Auto-Build](https://github.com/Marwanthe0/PC-Performance-Tracker/actions/workflows/auto-build.yml/badge.svg)](https://github.com/Marwanthe0/PC-Performance-Tracker/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Ubuntu Performance Track](performance_track/icons/performance-track.svg)
+A high-performance, real-time system performance monitor designed to run seamlessly on **any personal OS** — **Windows**, **macOS**, and **Linux** (including Ubuntu and GNOME).
+
+It tracks and displays live **CPU**, **RAM**, **Network Throughput**, and **Disk I/O** directly in your desktop top bar or system tray, accompanied by an always-on floating desktop HUD bar and a full cyber-styled real-time GUI Dashboard window.
 
 ---
 
-## 📦 Downloadable Installer Packages
+## ⚡ 1-Click Installers (Windows, Linux, macOS)
+> **Looking to install? Everything is right here at the front of the folder!**
 
-All ready-to-use downloadable installers and uninstallers are built and available in the `dist/` folder:
+| Operating System | 1-Click Installer (Root Folder) | Dedicated Package Folder | Direct Downloads |
+| :--- | :--- | :--- | :--- |
+| **🪟 Windows (10 / 11)** | Double-click [`INSTALL_WINDOWS.bat`](INSTALL_WINDOWS.bat) | [`Installers/Windows/`](Installers/Windows/) | [Standalone .EXE](Installers/Windows/PerformanceTracker.exe) • [Portable .ZIP](Installers/Windows/PerformanceTracker-Windows-x64.zip) |
+| **🐧 Linux / Ubuntu** | Run `bash INSTALL_LINUX.sh` | [`Installers/Linux/`](Installers/Linux/) | [Debian .DEB](Installers/Linux/ubuntu-performance-track_1.0.0_all.deb) • [Self-Extracting .RUN](Installers/Linux/ubuntu-performance-track-installer.run) • [.TAR.GZ](Installers/Linux/ubuntu-performance-track-v1.0.0.tar.gz) |
+| **🍎 macOS** | Run `bash INSTALL_MACOS.sh` | [`Installers/macOS/`](Installers/macOS/) | [macOS App Bundle .ZIP](Installers/macOS/PerformanceTracker-macOS.zip) |
 
+*(To launch instantly on Windows without installing, just double-click [`RUN_APP.bat`](RUN_APP.bat))*
+
+---
+
+## 📦 Ready-to-Use Packages by Operating System
+
+### 🪟 Windows (10 / 11)
+| File | Description | How to Run / Install |
+| :--- | :--- | :--- |
+| **`INSTALL_WINDOWS.bat`** | **1-Click Windows Desktop & Start Menu Installer** (Supports OneDrive & Win 11) | Double-click `INSTALL_WINDOWS.bat` |
+| **`Installers/Windows/PerformanceTracker.exe`** | **Standalone Windows Executable** (Zero installation, double-click to launch) | Double-click `PerformanceTracker.exe` |
+| **`Installers/Windows/PerformanceTracker-Windows-x64.zip`** | **Portable Archive** | Extract anywhere and run `PerformanceTracker.exe` |
+| **`Installers/Windows/Uninstall-Windows.bat`** | **1-Click Clean Uninstaller** | Double-click `Uninstall-Windows.bat` |
+
+### 🐧 Linux & Ubuntu
 | File | Description | How to Install | How to Uninstall |
 | :--- | :--- | :--- | :--- |
-| **`dist/ubuntu-performance-track-installer.run`** | **Single-File Self-Extracting Installer** (Recommended for portable use, no root needed) | `bash ubuntu-performance-track-installer.run` | `ubuntu-performance-track-uninstall` or run `ubuntu-performance-track-uninstaller.sh` |
-| **`dist/ubuntu-performance-track_1.0.0_all.deb`** | **Native Debian Package** (Double-click or apt/dpkg) | `sudo apt install ./ubuntu-performance-track_1.0.0_all.deb` | `sudo apt remove ubuntu-performance-track` |
-| **`dist/ubuntu-performance-track-v1.0.0.tar.gz`** | **Portable Source Archive** | Extract and run `./install.sh` | Run `./uninstall.sh` |
-| **`dist/ubuntu-performance-track-uninstaller.sh`** | **Standalone Uninstaller Script** | — | `bash ubuntu-performance-track-uninstaller.sh` |
+| **`INSTALL_LINUX.sh`** | **1-Click Linux Installer** (Auto-detects deb/apt or standalone) | `bash INSTALL_LINUX.sh` | `bash Installers/Linux/Uninstall-Linux.sh` |
+| **`Installers/Linux/ubuntu-performance-track-installer.run`** | **Single-File Self-Extracting Installer** (No root needed) | `bash Installers/Linux/ubuntu-performance-track-installer.run` | `ubuntu-performance-track-uninstall` |
+| **`Installers/Linux/ubuntu-performance-track_1.0.0_all.deb`** | **Native Debian Package** (Ubuntu Software / apt) | `sudo apt install ./Installers/Linux/ubuntu-performance-track_1.0.0_all.deb` | `sudo apt remove ubuntu-performance-track` |
+| **`Installers/Linux/ubuntu-performance-track-v1.0.0.tar.gz`** | **Portable Source Tarball** | Extract and run `./install.sh` | Run `./uninstall.sh` |
+
+### 🍎 macOS
+| File | Description | How to Run / Install |
+| :--- | :--- | :--- |
+| **`INSTALL_MACOS.sh`** | **1-Click macOS Installer** | `bash INSTALL_MACOS.sh` |
+| **`Installers/macOS/PerformanceTracker-macOS.zip`** | **macOS Application Bundle** | Extract and drag `PerformanceTracker.app` to Applications |
 
 ---
 
-## 🚀 Installation Guide for Any User
+## 🚀 How to Build for Any Personal OS
 
-### Option 1: Self-Extracting Installer (`.run`) — Recommended
-This single file contains everything needed:
-```bash
-# Download and install:
-chmod +x ubuntu-performance-track-installer.run
-./ubuntu-performance-track-installer.run
+The project includes a universal build pipeline (`build.py`) as well as platform-specific build scripts:
+
+### Build on Windows:
+```cmd
+# One-click batch build:
+build_windows.bat
+
+# Or using Python:
+python build.py --target windows
 ```
-- Installs into `~/.local/share/ubuntu-performance-track/`
-- Installs command `ubuntu-performance-track` into `~/.local/bin/`
-- Creates desktop shortcuts and enables auto-start on login
-- Launches the topbar monitor immediately
+*Generates `dist/PerformanceTracker.exe`, `dist/PerformanceTracker-Windows-x64.zip`, and `dist/install_performancetracker.bat`.*
 
-To uninstall anytime:
+### Build on Linux:
 ```bash
-ubuntu-performance-track-uninstall
+# Using universal builder:
+python3 build.py --target linux
+
+# Or legacy bash script:
+./build_dist.sh
+```
+*Generates `.deb`, `.run`, `.tar.gz`, and Linux binaries.*
+
+### Build on macOS:
+```bash
+# Using universal builder:
+python3 build.py --target macos
+
+# Or helper script:
+./build_macos.sh
+```
+*Generates `PerformanceTracker.app` and `.zip`.*
+
+### Build All:
+```bash
+python build.py --target all
 ```
 
 ---
 
-### Option 2: Native Ubuntu Debian Package (`.deb`)
-```bash
-# Install with apt or dpkg:
-sudo apt install ./ubuntu-performance-track_1.0.0_all.deb
-```
-Or double-click the `.deb` file to install via Ubuntu App Center / Software Center.
+## ⚡ GitHub Actions Auto-Build Pipeline
 
-To uninstall:
-```bash
-sudo apt remove ubuntu-performance-track
-```
+The repository includes a complete CI/CD workflow in [`.github/workflows/auto-build.yml`](.github/workflows/auto-build.yml) that automatically runs multi-OS build matrix on every push and release tag:
+- **Windows runner** (`windows-latest`): Builds Windows `.exe` and `.zip`.
+- **Linux runner** (`ubuntu-latest`): Builds Debian `.deb`, `.run`, and source tarball.
+- **macOS runner** (`macos-latest`): Builds macOS application bundle and zip.
+- Automatically tests metric collectors and uploads release artifacts.
 
 ---
 
-### Option 3: From Source Directory
+## 💻 Running from Source
+
+You can run Performance Track directly from source on any OS:
+
 ```bash
-# Install user-level (no sudo required):
-./install.sh
+# Install dependencies:
+pip install psutil pystray pillow
 
-# Or install system-wide:
-sudo ./install.sh --system
+# Launch on Windows:
+run.bat
 
-# To uninstall:
-./uninstall.sh
+# Launch on Linux / macOS:
+./run.sh
+
+# Or directly with Python:
+python -m performance_track.app
+
+# Open directly with GUI Dashboard:
+python -m performance_track.app --dashboard
+
+# Run in lightweight terminal / SSH mode:
+python -m performance_track.app --cli
 ```
 
 ---
 
 ## ✨ Features
 
-- **Top Bar Integration**:
-  - **Live CPU Usage**: Displays percentage, average frequency, and load average.
-  - **Live RAM Usage**: Real-time memory consumption, available memory, and total capacity.
-  - **Performance Track**: Real-time network throughput (download/upload rates) and disk I/O activity.
-  - **Dynamic Sparklines**: Live Unicode sparkline tracks (` ▂▃▄▅▆▇█`) rendering live load trajectories directly inside the topbar.
+- **Always-Visible Desktop HUD Bar (Top / Bottom Dock)**:
+  - Sleek, semi-translucent floating monitor bar that docks to the top or bottom of your screen.
+  - Displays live CPU %, RAM %, Network Download / Upload speeds, and Disk I/O at all times even when the main dashboard is closed.
+  - 1-click dock switch between screen Top and Bottom edge, or drag anywhere on desktop.
+  - Click to expand to full Dashboard or minimize to tray.
 
-- **Interactive Dropdown Menu** (Click to reveal):
-  - **⚡ CPU Section**: Overall percentage, visual progress bar, CPU frequency, and a dedicated **Per-Core Submenu** showing individual usage for every core.
-  - **💾 RAM & Swap Section**: Used, Available, Free, Cached/Buffers, and Swap breakdown.
-  - **🌐 Performance Track Section**: Download/Upload speeds, cumulative transfer totals, and Disk Read/Write rates.
-  - **🔥 Top Processes Track**: Live view of the top 5 CPU and Memory-consuming processes.
-  - **🎨 Display Modes**: Switch on the fly between *Balanced*, *Sparkline Track*, *Compact*, *Minimal*, and *Detailed*.
-  - **⏱ Update Speed**: Configure refresh rate (1s, 2s, 3s, 5s).
-  - **🚀 Autostart**: Enable/disable automatic startup on Ubuntu login with one click.
-  - **🖥 GNOME System Monitor Launcher**: Quick 1-click shortcut to the default Ubuntu system monitor.
+- **Cross-Platform System Tray / Topbar Integration**:
+  - **Ubuntu GNOME**: Native AppIndicator in top bar with live metrics and Unicode sparkline tracks (` ▂▃▄▅▆▇█`).
+  - **Windows & macOS**: Dynamic System Tray indicator with real-time badges, hover tooltips, and interactive menus.
+  - **Live CPU Usage**: Overall percentage, frequency, load average, and per-core submenus.
+  - **Live RAM Usage**: Real-time memory consumption, available memory, cached, and swap breakdown.
+  - **Performance Track**: Real-time network throughput (download/upload rates) and disk I/O rates.
 
 - **Full GUI Dashboard Window**:
-  - Live anti-aliased **Cairo graphical charts** for CPU, RAM, Network, and Disk I/O history.
-  - Visual core grid with animated progress bars for all CPU cores.
+  - Interactive multi-series real-time Canvas charts for CPU & RAM, and Network & Disk I/O.
+  - Per-core progress grid displaying utilization for all CPU cores.
   - Sortable and searchable **Process Manager** with ability to safely terminate runaway tasks.
-  - Preferences editor.
+  - Preferences editor (switch display mode between *Balanced*, *Sparkline Track*, *Compact*, *Minimal*, and *Detailed*).
+  - 1-click launcher for host OS Task Manager (`taskmgr` on Windows, `Activity Monitor` on macOS, `gnome-system-monitor` on Linux).
+  - Autostart on system login toggle for Windows, macOS, and Linux.
 
 ---
 
-## 🎨 Topbar Display Modes
+## 🧪 Testing & Verification
 
-You can switch the topbar layout anytime via the indicator menu:
-
-| Mode | Topbar Display Example |
-| :--- | :--- |
-| **Balanced (Default)** | `CPU 14%  \|  RAM 28% (4.2G)  \|  ↓ 1.2M/s ↑ 80K/s` |
-| **Sparkline Track** | `CPU 14%  ▂▃  \|  RAM 28% ▄▅  \|  1.2M/s` |
-| **Compact** | `C:14% R:28% P:1.2M` |
-| **Minimal** | `14% CPU  28% RAM` |
-| **Detailed** | `CPU: 14.2% (3.9GHz) \| RAM: 4.2G/15.0G (28%) \| ↓1.2M ↑80K` |
-
----
-
-## 📁 Project Structure
-
-```
-Usage/
-├── build_dist.sh                       # Build script to generate all release installers
-├── dist/                               # Downloadable installer packages
-│   ├── ubuntu-performance-track-installer.run      # Single-file self-extracting installer
-│   ├── ubuntu-performance-track_1.0.0_all.deb      # Native Debian (.deb) package
-│   ├── ubuntu-performance-track-uninstaller.sh    # Standalone uninstaller script
-│   └── ubuntu-performance-track-v1.0.0.tar.gz      # Portable source archive
-├── run.sh                              # Instant launcher script
-├── install.sh                          # Universal installer
-├── uninstall.sh                        # Universal uninstaller
-├── ubuntu-performance-track.desktop    # XDG Desktop application launcher
-├── README.md                           # Documentation
-├── performance_track/
-│   ├── __init__.py                     # Package initialization
-│   ├── app.py                          # AppIndicator & menu controller
-│   ├── monitor.py                      # /proc & /sys metrics collector
-│   ├── dashboard.py                    # GTK3 Dashboard Window & Cairo charts
-│   ├── config.py                       # User settings & autostart management
-│   ├── sparkline.py                    # Unicode block sparklines & formatting
-│   └── icons/
-│       ├── performance-track.svg       # Full-color scalable application icon
-│       └── performance-track-symbolic.svg # GNOME symbolic monochrome icon
-├── gnome-extension/                    # Native GNOME Shell 45/46 Extension
-│   ├── metadata.json
-│   ├── extension.js
-│   ├── stylesheet.css
-│   └── install_extension.sh
-└── tests/
-    └── test_monitor.py                 # Automated verification test suite
-```
-
----
-
-## 🧪 Testing
-
-Run the automated test suite to verify metric collection, rate calculations, and sparkline rendering:
+Run the automated test suite across all platforms:
 ```bash
-python3 tests/test_monitor.py
+python tests/test_monitor.py
 ```
+Verifies metric collectors, sparkline generation, platform detection, and config synchronization.

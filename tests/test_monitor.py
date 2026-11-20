@@ -65,6 +65,24 @@ def test_monitor():
 
     print("All SystemMonitor tests passed successfully!")
 
+def test_config():
+    from performance_track.config import Config
+    cfg = Config()
+    assert cfg.get("update_interval") is not None
+    assert cfg.get("display_mode") in ["balanced", "sparkline", "compact", "minimal", "detailed"]
+    print("Config tests passed!")
+
+def test_system():
+    monitor = SystemMonitor(history_size=10)
+    data = monitor.update()
+    assert "system" in data
+    assert "hostname" in data["system"]
+    assert "kernel" in data["system"]
+    assert len(data["system"]["hostname"]) > 0
+    print(f"System Info Verified: Host {data['system']['hostname']} on {data['system']['kernel']}")
+
 if __name__ == '__main__':
     test_sparkline()
+    test_config()
+    test_system()
     test_monitor()
