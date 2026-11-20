@@ -1,11 +1,13 @@
 {
-  "name": "Ubuntu Performance Track",
+  "name": "Performance Tracker (AnyOS)",
   "description": "Live RAM, CPU, and Performance Tracking in the GNOME Top Bar",
   "uuid": "performancetrack@ubuntu.local",
   "shell-version": [
     "45",
-    "46"
+    "46",
+    "47",
+    "48"
   ],
-  "url": "https://github.com/ubuntu/performance-track",
+  "url": "https://github.com/Marwanthe0/Performance-Tracker-AnyOS",
   "version": 1
 }

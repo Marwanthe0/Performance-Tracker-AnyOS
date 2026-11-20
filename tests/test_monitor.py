@@ -50,9 +50,23 @@ def test_monitor():
     assert 'track' in data
     assert data['track']['net_rx_rate'] >= 0.0
     assert data['track']['net_tx_rate'] >= 0.0
+    assert data['track']['net_total_rate'] >= 0.0
     assert data['track']['disk_read_rate'] >= 0.0
     assert data['track']['disk_write_rate'] >= 0.0
-    print(f"Performance Track Verified: Net ↓ {format_rate(data['track']['net_rx_rate'])}, Disk {format_rate(data['track']['disk_read_rate'] + data['track']['disk_write_rate'])}")
+    assert data['track']['disk_total_rate'] >= 0.0
+    print(f"Performance Track Verified: Net ↓ {format_rate(data['track']['net_rx_rate'])}, Disk {format_rate(data['track']['disk_total_rate'])}")
+
+    # GPU & Battery checks
+    assert 'gpu' in data
+    assert 'battery' in data
+    print(f"GPU Info: {data['gpu'].get('name', 'None')} (Available: {data['gpu'].get('available')})")
+    print(f"Battery Info: Present={data['battery'].get('present')}, Level={data['battery'].get('percent')}%")
+
+    # Storage and Interface helper checks
+    disks = monitor.get_storage_devices()
+    print(f"Detected {len(disks)} storage partitions")
+    adapters = monitor.get_network_interfaces()
+    print(f"Detected {len(adapters)} network interfaces")
 
     # Top processes check
     cpu_procs = monitor.get_top_processes(count=3, sort_by='cpu')

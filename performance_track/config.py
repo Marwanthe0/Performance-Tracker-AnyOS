@@ -127,9 +127,19 @@ class Config:
         # Default to sys.executable with run launcher
         script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         if SYS_NAME == "Windows":
+            installed_exe = os.path.expandvars(r"%LOCALAPPDATA%\Programs\PerformanceTracker\PerformanceTracker.exe")
+            if os.path.isfile(installed_exe):
+                return f'"{installed_exe}"'
             bat_run = os.path.join(script_dir, "run.bat")
             if os.path.exists(bat_run):
-                return bat_run
+                return f'"{bat_run}"'
+
+            py_exec = sys.executable
+            if py_exec.lower().endswith("python.exe"):
+                pyw = py_exec[:-10] + "pythonw.exe"
+                if os.path.exists(pyw):
+                    py_exec = pyw
+            return f'"{py_exec}" "{os.path.join(script_dir, "performance_track", "app.py")}"'
         else:
             sh_run = os.path.join(script_dir, "run.sh")
             if os.path.exists(sh_run):

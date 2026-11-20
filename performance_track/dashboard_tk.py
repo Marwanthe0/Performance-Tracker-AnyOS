@@ -79,11 +79,11 @@ class TkHistoryGraph(tk.Canvas):
         self.create_text(pad_left, 14, text=self.title, fill="#f1f5f9", font=("Helvetica", 10, "bold"), anchor="w")
 
         # Legend
-        legend_x = max(pad_left + 150, w - pad_right - (len(self.series_configs) * 110))
+        legend_x = max(pad_left + 140, w - pad_right - (len(self.series_configs) * 98))
         for s in self.series_configs:
-            self.create_rectangle(legend_x, 8, legend_x + 10, 18, fill=s["color"], outline="")
-            self.create_text(legend_x + 14, 13, text=s["name"], fill="#cbd5e1", font=("Helvetica", 8, "bold"), anchor="w")
-            legend_x += 105
+            self.create_rectangle(legend_x, 8, legend_x + 9, 17, fill=s["color"], outline="")
+            self.create_text(legend_x + 13, 13, text=s["name"], fill="#cbd5e1", font=("Helvetica", 8, "bold"), anchor="w")
+            legend_x += 96
 
         # Plot series lines and area
         for s in self.series_configs:
@@ -120,34 +120,26 @@ class TkHistoryGraph(tk.Canvas):
 
 
 class UniversalDashboardWindow(tk.Toplevel):
-    def __init__(self, monitor, config, on_config_changed=None, master=None):
+    def __init__(self, monitor, config, on_config_changed=None, on_quit=None, master=None):
         super().__init__(master)
         self.monitor = monitor
         self.config = config
         self.on_config_changed = on_config_changed
+        self.on_quit = on_quit
 
-        self.title("Performance Track Dashboard")
-        self.geometry("920x650")
-        self.minsize(780, 520)
+        self.title("Performance Tracker Dashboard")
+        self.geometry("960x680")
+        self.minsize(800, 540)
         self.configure(bg="#080b12")
 
-        # Intercept close button: Hide instead of destroy so the Desktop Bar stays alive
+        # Intercept close button: Hide instead of destroy so the Desktop Bar / Tray stay alive
         self.protocol("WM_DELETE_WINDOW", self.hide)
-
-        if SYS_NAME == "Windows":
-            try:
-                import ctypes
-                ctypes.windll.shcore.SetProcessDpiAwareness(1)
-            except Exception:
-                pass
 
         self._search_query = ""
         self._setup_styles()
         self._build_header()
         self._build_tabs()
-
         self._timer_running = True
-        self._update_loop()
 
     def _setup_styles(self):
         style = ttk.Style(self)
@@ -215,6 +207,13 @@ class UniversalDashboardWindow(tk.Toplevel):
                             activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=4,
                             command=_open_native_task_manager)
         btn_sys.pack(side="left", padx=6)
+
+        if self.on_quit:
+            btn_exit = tk.Button(right_box, text="✕ Exit App", font=("Helvetica", 9, "bold"),
+                                 bg="#be123c", fg="#ffffff", activebackground="#e11d48",
+                                 activeforeground="#ffffff", relief="flat", bd=0, padx=12, pady=4,
+                                 command=self.on_quit)
+            btn_exit.pack(side="left", padx=6)
 
     def _build_tabs(self):
         self.notebook = ttk.Notebook(self)
@@ -288,9 +287,13 @@ class UniversalDashboardWindow(tk.Toplevel):
             graphs_frame,
             title="I/O Throughput Track (MB/s)",
             series_configs=[
-                {"name": "Net Download", "color": "#00e676", "fill_color": "#0e291e",
+                {"name": "Net Down", "color": "#00e676", "fill_color": "#0e291e",
                  "get_data": lambda: [x / (1024 * 1024) for x in self.monitor.net_rx_history]},
-                {"name": "Disk Activity", "color": "#b388ff", "fill_color": "#231636",
+                {"name": "Net Up", "color": "#38bdf8", "fill_color": "#0c2534",
+                 "get_data": lambda: [x / (1024 * 1024) for x in self.monitor.net_tx_history]},
+                {"name": "Disk Read", "color": "#f59e0b", "fill_color": "#2a2012",
+                 "get_data": lambda: [x / (1024 * 1024) for x in self.monitor.disk_read_history]},
+                {"name": "Disk Write", "color": "#b388ff", "fill_color": "#231636",
                  "get_data": lambda: [x / (1024 * 1024) for x in self.monitor.disk_write_history]}
             ],
             max_val=10.0,
@@ -358,6 +361,15 @@ class UniversalDashboardWindow(tk.Toplevel):
 
         self.lbl_swap_breakdown = tk.Label(wrap, text="", font=("Helvetica", 9), fg="#94a3b8", bg="#080b12", anchor="w")
         self.lbl_swap_breakdown.pack(fill="x", pady=4)
+
+        tk.Frame(wrap, height=1, bg="#1e2536").pack(fill="x", pady=16)
+
+        tk.Label(wrap, text="Storage Disks & Mounted Partitions", font=("Helvetica", 11, "bold"),
+                 fg="#f8fafc", bg="#080b12", anchor="w").pack(fill="x", pady=(4, 6))
+
+        self.drives_container = tk.Frame(wrap, bg="#080b12")
+        self.drives_container.pack(fill="x", pady=2)
+        self.drive_widgets = {}
 
     def _build_processes_tab(self):
         wrap = tk.Frame(self.tab_processes, bg="#080b12")
@@ -511,34 +523,65 @@ class UniversalDashboardWindow(tk.Toplevel):
     def _update_processes(self):
         # Only query processes if Processes tab is visible or search active
         sort_by = "mem" if "RAM" in self.sort_var.get() else "cpu"
-        procs = self.monitor.get_top_processes(count=30, sort_by=sort_by)
+        procs = self.monitor.get_top_processes(count=40, sort_by=sort_by)
 
         if self._search_query:
             procs = [p for p in procs if self._search_query in p["name"].lower() or self._search_query in str(p["pid"])]
 
-        for row in self.proc_tree.get_children():
-            self.proc_tree.delete(row)
+        # Save selected PID(s) and scroll position to eliminate selection-loss bug
+        selected_iids = set(self.proc_tree.selection())
+        y_scroll = self.proc_tree.yview()
+
+        existing_iids = set(self.proc_tree.get_children())
+        current_iids = set()
 
         for p in procs:
-            self.proc_tree.insert("", "end", values=(
+            iid = str(p["pid"])
+            current_iids.add(iid)
+            row_vals = (
                 p["pid"],
                 p["user"],
                 p["name"],
                 f"{p['cpu']:.1f}%",
                 f"{p['mem']:.1f}%"
-            ))
+            )
+            if iid in existing_iids:
+                self.proc_tree.item(iid, values=row_vals)
+            else:
+                self.proc_tree.insert("", "end", iid=iid, values=row_vals)
+
+        # Remove terminated processes
+        for dead_iid in existing_iids - current_iids:
+            self.proc_tree.delete(dead_iid)
+
+        # Restore user selection
+        to_select = [iid for iid in selected_iids if self.proc_tree.exists(iid)]
+        if to_select:
+            self.proc_tree.selection_set(to_select)
+
+        # Restore scroll position if not actively typing
+        if y_scroll and not self._search_query:
+            try:
+                self.proc_tree.yview_moveto(y_scroll[0])
+            except Exception:
+                pass
 
     def update_ui(self):
         data = self.monitor.update()
 
-        self.lbl_host.config(text=f"({data['system']['hostname']} — {data['system']['kernel']})")
+        batt_str = f" | 🔋 {data['battery']['percent']:.0f}% ({data['battery']['time_left']})" if data.get('battery', {}).get('present') else ""
+        gpu_str = f" | 🎮 GPU: {data['gpu']['load']:.0f}%" if data.get('gpu', {}).get('available') else ""
+        self.lbl_host.config(text=f"({data['system']['hostname']} — {data['system']['kernel']}{gpu_str}{batt_str})")
 
         # 1. Cards
         cpu_pct = data['cpu']['percent']
         ram_pct = data['ram']['percent']
         net_rx = data['track']['net_rx_rate']
         net_tx = data['track']['net_tx_rate']
-        disk_rw = data['track']['disk_read_rate'] + data['track']['disk_write_rate']
+        net_tot = data['track']['net_total_rate']
+        disk_r = data['track']['disk_read_rate']
+        disk_w = data['track']['disk_write_rate']
+        disk_tot = data['track']['disk_total_rate']
 
         self.lbl_card_cpu.config(text=f"{cpu_pct:.1f}%")
         freq_str = f"{data['cpu']['frequency']:.0f} MHz" if data['cpu']['frequency'] else ""
@@ -549,16 +592,21 @@ class UniversalDashboardWindow(tk.Toplevel):
         self.lbl_card_ram.config(text=f"{ram_pct:.1f}%")
         self.lbl_sub_ram.config(text=f"{used_ram} / {total_ram}")
 
-        self.lbl_card_net.config(text=format_rate(net_rx))
-        self.lbl_sub_net.config(text=f"↑ {format_rate(net_tx)}")
+        self.lbl_card_net.config(text=format_rate(net_tot))
+        self.lbl_sub_net.config(text=f"↓ {format_rate(net_rx)} | ↑ {format_rate(net_tx)}")
 
-        self.lbl_card_disk.config(text=format_rate(disk_rw))
-        self.lbl_sub_disk.config(text=f"R: {format_rate(data['track']['disk_read_rate'])} | W: {format_rate(data['track']['disk_write_rate'])}")
+        self.lbl_card_disk.config(text=format_rate(disk_tot))
+        self.lbl_sub_disk.config(text=f"R: {format_rate(disk_r)} | W: {format_rate(disk_w)}")
 
-        # 2. Graphs
-        max_io = max(1.0, max(self.monitor.net_rx_history or [0]) / (1024 * 1024),
-                     max(self.monitor.disk_write_history or [0]) / (1024 * 1024))
-        self.graph_io.max_val = max(5.0, max_io * 1.25)
+        # 2. Graphs - dynamic auto-scale across all 4 streams
+        max_io = max(
+            1.0,
+            max(self.monitor.net_rx_history or [0]) / (1024 * 1024),
+            max(self.monitor.net_tx_history or [0]) / (1024 * 1024),
+            max(self.monitor.disk_read_history or [0]) / (1024 * 1024),
+            max(self.monitor.disk_write_history or [0]) / (1024 * 1024)
+        )
+        self.graph_io.max_val = max(2.0, max_io * 1.25)
         self.graph_cpu_ram.redraw()
         self.graph_io.redraw()
 
@@ -600,7 +648,7 @@ class UniversalDashboardWindow(tk.Toplevel):
                 lbl.config(text=f"Core {name.replace('cpu', '')}: {val:.1f}%")
                 p_var.set(val)
 
-        # 4. Memory Tab
+        # 4. Memory & Storage Tab
         self.ram_prog_var.set(ram_pct)
         self.lbl_ram_breakdown.config(
             text=f"Total: {total_ram}   |   Used: {used_ram}   |   Available: {format_bytes(data['ram']['available'])}   |   Free: {format_bytes(data['ram']['free'])}"
@@ -610,24 +658,41 @@ class UniversalDashboardWindow(tk.Toplevel):
             text=f"Total Swap: {format_bytes(data['ram']['swap_total'])}   |   Used: {format_bytes(data['ram']['swap_used'])}   |   Free: {format_bytes(data['ram']['swap_free'])}"
         )
 
-        # 5. Process list: ONLY update if Processes tab is actually selected
+        # Storage partitions breakdown
+        if hasattr(self, 'drives_container'):
+            disks = self.monitor.get_storage_devices()
+            for d in disks:
+                dev_key = d['mountpoint']
+                if dev_key not in self.drive_widgets:
+                    d_row = tk.Frame(self.drives_container, bg="#0d111a", padx=10, pady=6, bd=1, relief="solid")
+                    d_row.config(highlightbackground="#1c2538")
+                    d_row.pack(fill="x", pady=4)
+
+                    d_lbl = tk.Label(d_row, text=f"{d['mountpoint']} ({d['device']} - {d['fstype']})",
+                                     font=("Helvetica", 9, "bold"), fg="#e2e8f0", bg="#0d111a", anchor="w")
+                    d_lbl.pack(fill="x")
+
+                    d_pvar = tk.DoubleVar(value=d['percent'])
+                    d_pbar = ttk.Progressbar(d_row, variable=d_pvar, maximum=100.0, style="Horizontal.TProgressbar")
+                    d_pbar.pack(fill="x", pady=2)
+
+                    d_sub = tk.Label(d_row, text=f"{format_bytes(d['used'])} / {format_bytes(d['total'])} ({d['percent']:.1f}% used) — {format_bytes(d['free'])} free",
+                                     font=("Helvetica", 8), fg="#94a3b8", bg="#0d111a", anchor="w")
+                    d_sub.pack(fill="x")
+
+                    self.drive_widgets[dev_key] = (d_lbl, d_pvar, d_sub)
+                else:
+                    d_lbl, d_pvar, d_sub = self.drive_widgets[dev_key]
+                    d_pvar.set(d['percent'])
+                    d_sub.config(text=f"{format_bytes(d['used'])} / {format_bytes(d['total'])} ({d['percent']:.1f}% used) — {format_bytes(d['free'])} free")
+
+        # 5. Process list: ONLY update if Processes tab is actively selected
         try:
             current_tab_idx = self.notebook.index("current")
             if current_tab_idx == 3:  # Processes tab
                 self._update_processes()
         except Exception:
             pass
-
-    def _update_loop(self):
-        if not self._timer_running:
-            return
-        if self.state() != "withdrawn":
-            try:
-                self.update_ui()
-            except Exception:
-                pass
-
-        self.after(1000, self._update_loop)
 
     def show(self):
         self.deiconify()

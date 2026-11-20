@@ -19,11 +19,12 @@ SYS_NAME = platform.system()
 
 
 class DesktopBarWidget(tk.Toplevel):
-    def __init__(self, monitor, config, on_open_dashboard=None, master=None):
+    def __init__(self, monitor, config, on_open_dashboard=None, on_quit=None, master=None):
         super().__init__(master)
         self.monitor = monitor
         self.config = config
         self.on_open_dashboard = on_open_dashboard
+        self.on_quit = on_quit
 
         # Window styling: Frameless, Always on Top, Acrylic Dark Glass
         self.overrideredirect(True)
@@ -36,7 +37,7 @@ class DesktopBarWidget(tk.Toplevel):
         self.configure(bg="#090d16")
 
         # Dimensions
-        self.bar_width = 820
+        self.bar_width = 840
         self.bar_height = 38
         self._drag_start_x = 0
         self._drag_start_y = 0
@@ -47,9 +48,7 @@ class DesktopBarWidget(tk.Toplevel):
         # Bind dragging & double-click
         self._bind_mouse_events()
 
-        # Auto-refresh loop
         self._running = True
-        self._update_loop()
 
     def _build_ui(self):
         # Outer border frame
@@ -238,7 +237,10 @@ class DesktopBarWidget(tk.Toplevel):
 
     def _quit_app(self):
         self._running = False
-        self.master.destroy()
+        if self.on_quit:
+            self.on_quit()
+        else:
+            self.master.destroy()
 
     def update_telemetry(self):
         """Instant non-blocking telemetry refresh from cached monitor snapshot."""
@@ -248,7 +250,9 @@ class DesktopBarWidget(tk.Toplevel):
         ram_pct = data['ram']['percent']
         net_rx = data['track']['net_rx_rate']
         net_tx = data['track']['net_tx_rate']
-        disk_rw = data['track']['disk_read_rate'] + data['track']['disk_write_rate']
+        disk_r = data['track']['disk_read_rate']
+        disk_w = data['track']['disk_write_rate']
+        disk_rw = disk_r + disk_w
 
         mode = self.config.get("display_mode", "balanced")
 
@@ -288,19 +292,7 @@ class DesktopBarWidget(tk.Toplevel):
             self.lbl_net_val.config(text=f"↓ {format_short_rate(net_rx)}/s ↑ {format_short_rate(net_tx)}/s")
 
         # 4. Update Disk
-        self.lbl_disk_val.config(text=f"{format_short_rate(disk_rw)}/s")
-
-    def _update_loop(self):
-        if not self._running:
-            return
-        if self.state() != "withdrawn":
-            try:
-                self.update_telemetry()
-            except Exception:
-                pass
-
-        interval_ms = int(float(self.config.get("update_interval", 1.0)) * 1000)
-        self.after(max(400, interval_ms), self._update_loop)
+        self.lbl_disk_val.config(text=f"R:{format_short_rate(disk_r)}/s W:{format_short_rate(disk_w)}/s")
 
     def show(self):
         self.deiconify()

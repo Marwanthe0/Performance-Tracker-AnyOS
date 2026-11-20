@@ -9,6 +9,7 @@ import os
 import sys
 import glob
 import time
+import math
 import platform
 import subprocess
 import threading
@@ -48,8 +49,11 @@ class SystemMonitor:
         self.ram_history = deque(maxlen=history_size)
         self.net_rx_history = deque(maxlen=history_size)
         self.net_tx_history = deque(maxlen=history_size)
+        self.net_total_history = deque(maxlen=history_size)
         self.disk_read_history = deque(maxlen=history_size)
         self.disk_write_history = deque(maxlen=history_size)
+        self.disk_total_history = deque(maxlen=history_size)
+        self.gpu_history = deque(maxlen=history_size)
 
         # Previous state trackers for delta calculations
         self._prev_time = time.time()
@@ -60,9 +64,26 @@ class SystemMonitor:
         self._prev_disk_write = 0
         self._first_run = True
 
-        # Process cache to prevent hitching the GUI
+        # Process cache & persistent trackers
         self._proc_cache = {'cpu': (0, []), 'mem': (0, [])}
-        self._proc_cache_ttl = 3.5  # seconds
+        self._proc_tracker = {}        # pid -> psutil.Process
+        self._proc_cache_ttl = 2.5     # seconds
+
+        # Realistic Load Average simulation for Windows & non-UNIX
+        self._ema_load = [0.0, 0.0, 0.0]
+        self._ema_last_time = time.time()
+
+        # GPU cache & telemetry
+        self._gpu_cache = {
+            'available': False,
+            'name': 'No Dedicated GPU',
+            'load': 0.0,
+            'mem_used': 0,
+            'mem_total': 0,
+            'mem_percent': 0.0,
+            'temp': None
+        }
+        self._last_gpu_probe = 0.0
 
         # Static hardware info
         self.model_name = "Unknown CPU"
@@ -238,6 +259,109 @@ class SystemMonitor:
             pass
         return read_bytes, write_bytes
 
+    def _read_win_memory(self):
+        """Native Windows memory detection via ctypes GlobalMemoryStatusEx."""
+        try:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ('dwLength', ctypes.c_ulong),
+                    ('dwMemoryLoad', ctypes.c_ulong),
+                    ('ullTotalPhys', ctypes.c_ulonglong),
+                    ('ullAvailPhys', ctypes.c_ulonglong),
+                    ('ullTotalPageFile', ctypes.c_ulonglong),
+                    ('ullAvailPageFile', ctypes.c_ulonglong),
+                    ('ullTotalVirtual', ctypes.c_ulonglong),
+                    ('ullAvailVirtual', ctypes.c_ulonglong),
+                    ('sullAvailExtendedVirtual', ctypes.c_ulonglong),
+                ]
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                total_phys = int(stat.ullTotalPhys)
+                avail_phys = int(stat.ullAvailPhys)
+                used_phys = max(0, total_phys - avail_phys)
+                pct = float(stat.dwMemoryLoad)
+                total_page = int(stat.ullTotalPageFile)
+                avail_page = int(stat.ullAvailPageFile)
+                used_page = max(0, total_page - avail_page)
+                swap_pct = (used_page / total_page * 100.0) if total_page > 0 else 0.0
+                return {
+                    'total': total_phys,
+                    'used': used_phys,
+                    'free': avail_phys,
+                    'available': avail_phys,
+                    'cached': 0,
+                    'percent': pct,
+                    'swap_total': total_page,
+                    'swap_used': used_page,
+                    'swap_free': avail_page,
+                    'swap_percent': swap_pct
+                }
+        except Exception:
+            pass
+        return None
+
+    def _read_darwin_memory(self):
+        """Native macOS memory detection via sysctl and vm_stat."""
+        try:
+            total = int(subprocess.check_output(['sysctl', '-n', 'hw.memsize'], text=True, stderr=subprocess.DEVNULL).strip())
+            out = subprocess.check_output(['vm_stat'], text=True, stderr=subprocess.DEVNULL)
+            page_size = 4096
+            free_pages = 0
+            inactive_pages = 0
+            for line in out.splitlines():
+                if 'page size of' in line:
+                    parts = line.split()
+                    page_size = int(parts[-2])
+                elif 'Pages free:' in line:
+                    free_pages = int(line.split(':')[1].strip().rstrip('.'))
+                elif 'Pages inactive:' in line:
+                    inactive_pages = int(line.split(':')[1].strip().rstrip('.'))
+            avail = (free_pages + inactive_pages) * page_size
+            used = max(0, total - avail)
+            pct = (used / total * 100.0) if total > 0 else 0.0
+            return {
+                'total': total,
+                'used': used,
+                'free': free_pages * page_size,
+                'available': avail,
+                'cached': inactive_pages * page_size,
+                'percent': pct,
+                'swap_total': 0,
+                'swap_used': 0,
+                'swap_free': 0,
+                'swap_percent': 0.0
+            }
+        except Exception:
+            return None
+
+    def _read_win_cpu(self):
+        """Native Windows CPU calculation via GetSystemTimes when psutil is not available."""
+        try:
+            import ctypes
+            class FILETIME(ctypes.Structure):
+                _fields_ = [('dwLowDateTime', ctypes.c_uint32), ('dwHighDateTime', ctypes.c_uint32)]
+            idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
+            if ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
+                def to_int(ft):
+                    return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+                curr_idle = to_int(idle)
+                curr_kernel = to_int(kernel)
+                curr_user = to_int(user)
+                if hasattr(self, '_prev_win_times') and self._prev_win_times:
+                    prev_idle, prev_kernel, prev_user = self._prev_win_times
+                    d_idle = curr_idle - prev_idle
+                    d_sys = (curr_kernel - prev_kernel) + (curr_user - prev_user)
+                    self._prev_win_times = (curr_idle, curr_kernel, curr_user)
+                    if d_sys > 0:
+                        pct = 100.0 * (1.0 - d_idle / d_sys)
+                        return max(0.0, min(100.0, pct))
+                self._prev_win_times = (curr_idle, curr_kernel, curr_user)
+        except Exception:
+            pass
+        return 0.0
+
     def _read_meminfo_proc(self):
         info = {}
         try:
@@ -379,13 +503,167 @@ class SystemMonitor:
             except Exception:
                 pass
 
-        synth = round((cpu_overall / 100.0) * self.logical_cores, 2)
-        return [synth, synth, synth]
+        # Exponential Moving Average (EMA) simulation for Windows & non-UNIX
+        now = time.time()
+        dt = max(0.1, min(10.0, now - self._ema_last_time))
+        self._ema_last_time = now
+        instant = (cpu_overall / 100.0) * self.logical_cores
+
+        decay_1 = math.exp(-dt / 60.0)
+        decay_5 = math.exp(-dt / 300.0)
+        decay_15 = math.exp(-dt / 900.0)
+
+        if self._ema_load == [0.0, 0.0, 0.0]:
+            self._ema_load = [instant, instant, instant]
+        else:
+            self._ema_load[0] = round(self._ema_load[0] * decay_1 + instant * (1.0 - decay_1), 2)
+            self._ema_load[1] = round(self._ema_load[1] * decay_5 + instant * (1.0 - decay_5), 2)
+            self._ema_load[2] = round(self._ema_load[2] * decay_15 + instant * (1.0 - decay_15), 2)
+
+        return list(self._ema_load)
+
+    def _read_battery(self):
+        """Battery health and charging status."""
+        if HAS_PSUTIL and hasattr(psutil, "sensors_battery"):
+            try:
+                batt = psutil.sensors_battery()
+                if batt is not None:
+                    percent = float(batt.percent)
+                    plugged = bool(batt.power_plugged)
+                    secsleft = batt.secsleft
+                    time_left = ""
+                    if secsleft == getattr(psutil, "POWER_TIME_UNLIMITED", -1):
+                        time_left = "Plugged in / Full"
+                    elif secsleft == getattr(psutil, "POWER_TIME_UNKNOWN", -2) or secsleft < 0:
+                        time_left = "Plugged in" if plugged else "Calculating..."
+                    else:
+                        m, s = divmod(int(secsleft), 60)
+                        h, m = divmod(m, 60)
+                        time_left = f"{h}h {m}m left"
+                    return {
+                        'present': True,
+                        'percent': percent,
+                        'plugged': plugged,
+                        'time_left': time_left
+                    }
+            except Exception:
+                pass
+        return {'present': False, 'percent': 100.0, 'plugged': True, 'time_left': ''}
+
+    def _read_gpu(self):
+        """Non-blocking GPU utilization and VRAM usage."""
+        now = time.time()
+        if now - self._last_gpu_probe < 2.5:
+            return self._gpu_cache
+
+        self._last_gpu_probe = now
+        try:
+            cmd = ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+                   "--format=csv,noheader,nounits"]
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, timeout=0.8).strip()
+            if out:
+                line = out.splitlines()[0]
+                parts = [p.strip() for p in line.split(",")]
+                if len(parts) >= 5:
+                    gpu_name = parts[0]
+                    gpu_load = float(parts[1])
+                    mem_used = int(float(parts[2]) * 1024 * 1024)
+                    mem_tot = int(float(parts[3]) * 1024 * 1024)
+                    temp = float(parts[4])
+                    pct = (mem_used / mem_tot * 100.0) if mem_tot > 0 else 0.0
+                    self._gpu_cache = {
+                        'available': True,
+                        'name': gpu_name,
+                        'load': gpu_load,
+                        'mem_used': mem_used,
+                        'mem_total': mem_tot,
+                        'mem_percent': pct,
+                        'temp': temp
+                    }
+                    return self._gpu_cache
+        except Exception:
+            pass
+
+        return self._gpu_cache
+
+    def get_storage_devices(self):
+        """Detailed list of mounted storage partitions with disk utilization."""
+        disks = []
+        if HAS_PSUTIL:
+            try:
+                for part in psutil.disk_partitions(all=False):
+                    if not part.mountpoint or 'cdrom' in part.opts or part.fstype == '':
+                        continue
+                    try:
+                        usage = psutil.disk_usage(part.mountpoint)
+                        disks.append({
+                            'device': part.device,
+                            'mountpoint': part.mountpoint,
+                            'fstype': part.fstype,
+                            'total': usage.total,
+                            'used': usage.used,
+                            'free': usage.free,
+                            'percent': usage.percent
+                        })
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+
+        if not disks and platform.system() == "Windows":
+            try:
+                import ctypes, string
+                bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+                drives = [f"{d}:\\" for d in string.ascii_uppercase if (bitmask & (1 << (ord(d) - 65)))]
+                for drv in drives:
+                    free_b, total_b, tot_free_b = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
+                    if ctypes.windll.kernel32.GetDiskFreeSpaceExW(drv, ctypes.byref(free_b), ctypes.byref(total_b), ctypes.byref(tot_free_b)):
+                        t = int(total_b.value)
+                        u = int(t - tot_free_b.value)
+                        f = int(tot_free_b.value)
+                        p = (u / t * 100.0) if t > 0 else 0.0
+                        disks.append({
+                            'device': drv,
+                            'mountpoint': drv,
+                            'fstype': 'NTFS',
+                            'total': t,
+                            'used': u,
+                            'free': f,
+                            'percent': round(p, 1)
+                        })
+            except Exception:
+                pass
+        return disks
+
+    def get_network_interfaces(self):
+        """Status and IP addresses of physical and virtual network adapters."""
+        adapters = []
+        if HAS_PSUTIL:
+            try:
+                stats = psutil.net_if_stats()
+                addrs = psutil.net_if_addrs()
+                for iface, if_stat in stats.items():
+                    if iface.startswith('lo') or 'Loopback' in iface:
+                        continue
+                    ip_list = []
+                    if iface in addrs:
+                        for addr in addrs[iface]:
+                            if getattr(addr, 'family', None) == 2:  # AF_INET (IPv4)
+                                ip_list.append(addr.address)
+                    adapters.append({
+                        'name': iface,
+                        'is_up': if_stat.isup,
+                        'speed': if_stat.speed,
+                        'ips': ip_list
+                    })
+            except Exception:
+                pass
+        return adapters
 
     def get_top_processes(self, count=5, sort_by='cpu', force=False):
         """
-        Get top processes by CPU or Memory.
-        Cached for 3.5s to prevent freezing the GUI loop on Windows.
+        Get top active processes by CPU or Memory.
+        Uses persistent process instances so CPU percent delta is non-zero and highly accurate.
         """
         now = time.time()
         last_time, cached_list = self._proc_cache.get(sort_by, (0, []))
@@ -396,27 +674,79 @@ class SystemMonitor:
         procs = []
         if HAS_PSUTIL:
             try:
-                for p in psutil.process_iter(['pid', 'username', 'name', 'cpu_percent', 'memory_percent']):
+                current_pids = set(psutil.pids())
+                # Prune dead processes from cache
+                stale_pids = set(self._proc_tracker.keys()) - current_pids
+                for spid in stale_pids:
+                    self._proc_tracker.pop(spid, None)
+
+                # Query process snapshots
+                for pid in current_pids:
+                    if pid == 0:
+                        continue
                     try:
-                        info = p.info
-                        name = info.get('name') or "Process"
-                        user = info.get('username') or "System"
-                        if "\\" in user:
-                            user = user.split("\\", 1)[1]
-                        cpu = float(info.get('cpu_percent') or 0.0)
-                        mem = float(info.get('memory_percent') or 0.0)
+                        if pid not in self._proc_tracker:
+                            proc = psutil.Process(pid)
+                            proc.cpu_percent(None)  # Baseline prime
+                            self._proc_tracker[pid] = proc
+                            cpu = 0.0
+                        else:
+                            proc = self._proc_tracker[pid]
+                            cpu = float(proc.cpu_percent(None) or 0.0)
+
+                        name = proc.name() or "Process"
+                        try:
+                            user = proc.username() or "System"
+                            if "\\" in user:
+                                user = user.split("\\", 1)[1]
+                        except Exception:
+                            user = "System"
+
+                        mem = float(proc.memory_percent() or 0.0)
                         procs.append({
-                            'pid': int(info['pid']),
+                            'pid': int(pid),
                             'user': user,
                             'cpu': round(cpu, 1),
                             'mem': round(mem, 1),
                             'name': name
                         })
                     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        self._proc_tracker.pop(pid, None)
                         continue
 
                 key = 'cpu' if sort_by == 'cpu' else 'mem'
                 procs.sort(key=lambda x: x[key], reverse=True)
+                self._proc_cache[sort_by] = (now, procs)
+                return procs[:count]
+            except Exception:
+                pass
+
+        # Fallback to 'tasklist' on Windows when psutil is not available
+        if platform.system() == "Windows":
+            try:
+                import csv
+                cmd = ["tasklist", "/FO", "CSV", "/NH"]
+                output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+                mem_snapshot = self.update().get('ram', {})
+                total_mem = mem_snapshot.get('total') or 16000000000
+                reader = csv.reader(output.strip().splitlines())
+                for row in reader:
+                    if len(row) >= 5 and row[1].isdigit():
+                        p_name = row[0]
+                        p_pid = int(row[1])
+                        mem_clean = row[4].replace(',', '').replace(' ', '').replace('K', '').replace('k', '')
+                        mem_kb = float(mem_clean) if mem_clean.isdigit() else 0.0
+                        mem_bytes = mem_kb * 1024
+                        mem_pct = round((mem_bytes / max(1, total_mem)) * 100.0, 1)
+                        procs.append({
+                            'pid': p_pid,
+                            'user': row[2] if len(row) > 2 else "System",
+                            'cpu': 0.0,
+                            'mem': mem_pct,
+                            'name': p_name
+                        })
+                key = 'mem' if sort_by == 'mem' else 'cpu'
+                procs.sort(key=lambda x: (x['mem'], x['pid']), reverse=True)
                 self._proc_cache[sort_by] = (now, procs)
                 return procs[:count]
             except Exception:
@@ -463,20 +793,23 @@ class SystemMonitor:
             except Exception:
                 pass
         else:
-            current_cpu_stats = self._read_cpu_raw_proc()
-            if self._prev_cpu_stats:
-                for name, (idle2, total2) in current_cpu_stats.items():
-                    if name in self._prev_cpu_stats:
-                        idle1, total1 = self._prev_cpu_stats[name]
-                        d_idle = idle2 - idle1
-                        d_total = total2 - total1
-                        pct = 0.0 if d_total <= 0 else 100.0 * (1.0 - (d_idle / d_total))
-                        pct = max(0.0, min(100.0, pct))
-                        if name == 'cpu':
-                            cpu_overall = pct
-                        else:
-                            cpu_cores[name] = pct
-            self._prev_cpu_stats = current_cpu_stats
+            if platform.system() == "Windows":
+                cpu_overall = self._read_win_cpu()
+            else:
+                current_cpu_stats = self._read_cpu_raw_proc()
+                if self._prev_cpu_stats:
+                    for name, (idle2, total2) in current_cpu_stats.items():
+                        if name in self._prev_cpu_stats:
+                            idle1, total1 = self._prev_cpu_stats[name]
+                            d_idle = idle2 - idle1
+                            d_total = total2 - total1
+                            pct = 0.0 if d_total <= 0 else 100.0 * (1.0 - (d_idle / d_total))
+                            pct = max(0.0, min(100.0, pct))
+                            if name == 'cpu':
+                                cpu_overall = pct
+                            else:
+                                cpu_cores[name] = pct
+                self._prev_cpu_stats = current_cpu_stats
 
         if not cpu_cores:
             for i in range(self.logical_cores):
@@ -530,6 +863,10 @@ class SystemMonitor:
                 'swap_free': swap_free,
                 'swap_percent': swap_percent
             }
+        elif platform.system() == "Windows":
+            mem = self._read_win_memory() or self._read_meminfo_proc()
+        elif platform.system() == "Darwin":
+            mem = self._read_darwin_memory() or self._read_meminfo_proc()
         else:
             mem = self._read_meminfo_proc()
 
@@ -548,11 +885,14 @@ class SystemMonitor:
 
         net_rx_rate = 0.0
         net_tx_rate = 0.0
-        if not self._first_run and net_rx >= self._prev_net_rx and net_tx >= self._prev_net_tx:
-            net_rx_rate = (net_rx - self._prev_net_rx) / time_delta
-            net_tx_rate = (net_tx - self._prev_net_tx) / time_delta
+        if not self._first_run:
+            if net_rx >= self._prev_net_rx:
+                net_rx_rate = (net_rx - self._prev_net_rx) / time_delta
+            if net_tx >= self._prev_net_tx:
+                net_tx_rate = (net_tx - self._prev_net_tx) / time_delta
         self._prev_net_rx = net_rx
         self._prev_net_tx = net_tx
+        net_total_rate = net_rx_rate + net_tx_rate
 
         # 4. Disk I/O Metrics
         disk_r, disk_w = 0, 0
@@ -569,17 +909,22 @@ class SystemMonitor:
 
         disk_r_rate = 0.0
         disk_w_rate = 0.0
-        if not self._first_run and disk_r >= self._prev_disk_read and disk_w >= self._prev_disk_write:
-            disk_r_rate = (disk_r - self._prev_disk_read) / time_delta
-            disk_w_rate = (disk_w - self._prev_disk_write) / time_delta
+        if not self._first_run:
+            if disk_r >= self._prev_disk_read:
+                disk_r_rate = (disk_r - self._prev_disk_read) / time_delta
+            if disk_w >= self._prev_disk_write:
+                disk_w_rate = (disk_w - self._prev_disk_write) / time_delta
         self._prev_disk_read = disk_r
         self._prev_disk_write = disk_w
+        disk_total_rate = disk_r_rate + disk_w_rate
 
-        # 5. Frequency, Temperature, Load, Uptime, Hostname
+        # 5. Frequency, Temperature, Load, Uptime, Hostname, GPU, Battery
         freq, temp = self._read_cpu_freq_and_temp()
         load = self._read_load_avg(cpu_overall=cpu_overall)
         uptime = self._read_uptime()
         hostname, kernel = _get_system_info()
+        gpu_info = self._read_gpu()
+        battery_info = self._read_battery()
 
         # Update History Buffers (Thread-safe)
         with self._lock:
@@ -587,8 +932,12 @@ class SystemMonitor:
             self.ram_history.append(mem['percent'])
             self.net_rx_history.append(net_rx_rate)
             self.net_tx_history.append(net_tx_rate)
+            self.net_total_history.append(net_total_rate)
             self.disk_read_history.append(disk_r_rate)
             self.disk_write_history.append(disk_w_rate)
+            self.disk_total_history.append(disk_total_rate)
+            if gpu_info.get('available'):
+                self.gpu_history.append(gpu_info.get('load', 0.0))
 
             snapshot = {
                 'cpu': {
@@ -617,17 +966,23 @@ class SystemMonitor:
                 'track': {
                     'net_rx_rate': net_rx_rate,
                     'net_tx_rate': net_tx_rate,
+                    'net_total_rate': net_total_rate,
                     'net_total_rx': net_rx,
                     'net_total_tx': net_tx,
                     'disk_read_rate': disk_r_rate,
                     'disk_write_rate': disk_w_rate,
+                    'disk_total_rate': disk_total_rate,
                     'disk_total_read': disk_r,
                     'disk_total_write': disk_w,
                     'net_rx_history': list(self.net_rx_history),
                     'net_tx_history': list(self.net_tx_history),
+                    'net_total_history': list(self.net_total_history),
                     'disk_read_history': list(self.disk_read_history),
-                    'disk_write_history': list(self.disk_write_history)
+                    'disk_write_history': list(self.disk_write_history),
+                    'disk_total_history': list(self.disk_total_history)
                 },
+                'gpu': gpu_info,
+                'battery': battery_info,
                 'system': {
                     'uptime': uptime,
                     'hostname': hostname,

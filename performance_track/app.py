@@ -100,7 +100,17 @@ def _open_native_task_manager():
 # ============================================================================
 class CrossPlatformApp:
     def __init__(self, start_with_dashboard=False):
-        import tkinter as tk
+        try:
+            import tkinter as tk
+        except ImportError:
+            print("[!] Error: Tkinter is required for the desktop interface.", file=sys.stderr)
+            if SYS_NAME == "Linux":
+                print("[*] On Ubuntu/Debian, install it with: sudo apt install python3-tk", file=sys.stderr)
+            print("[*] Falling back to CLI live monitor mode...\n", file=sys.stderr)
+            cli = CliMonitorApp()
+            cli.run()
+            sys.exit(0)
+
         from performance_track.dashboard_tk import UniversalDashboardWindow
         from performance_track.desktop_bar import DesktopBarWidget
 
@@ -120,6 +130,7 @@ class CrossPlatformApp:
             self.monitor,
             self.config,
             on_config_changed=self._on_config_changed,
+            on_quit=self.quit,
             master=self.root
         )
 
@@ -128,6 +139,7 @@ class CrossPlatformApp:
             self.monitor,
             self.config,
             on_open_dashboard=self.show_dashboard,
+            on_quit=self.quit,
             master=self.root
         )
 
@@ -261,6 +273,8 @@ class CrossPlatformApp:
             self.tray_icon.update_menu()
 
     def _on_config_changed(self):
+        new_interval = float(self.config.get("update_interval", 1.0))
+        self.monitor.update_interval = new_interval
         if self.tray_icon:
             self.tray_icon.update_menu()
         self.desktop_bar._position_bar()
@@ -271,7 +285,8 @@ class CrossPlatformApp:
         if not self._running:
             return
         self._on_tick()
-        self.root.after(1000, self._schedule_tick)
+        interval_ms = int(float(self.config.get("update_interval", 1.0)) * 1000)
+        self.root.after(max(400, interval_ms), self._schedule_tick)
 
     def _on_tick(self):
         # Non-blocking read from memory snapshot (2 microseconds)
@@ -700,6 +715,22 @@ class CliMonitorApp:
 # Main Entry Point
 # ============================================================================
 def main():
+    # Set High-DPI Awareness on Windows before any GUI window is created
+    if SYS_NAME == "Windows":
+        try:
+            import ctypes
+            # Per-Monitor v2 DPI awareness (Windows 10 1703+)
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)
+        except Exception:
+            try:
+                # Per-Monitor DPI awareness (Windows 8.1+)
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            except Exception:
+                try:
+                    ctypes.windll.user32.SetProcessDPIAware()
+                except Exception:
+                    pass
+
     parser = argparse.ArgumentParser(description=f"{APP_NAME} - Real-Time Performance Monitor")
     parser.add_argument("--dashboard", action="store_true", help="Launch with GUI Dashboard window opened immediately")
     parser.add_argument("--cli", action="store_true", help="Run lightweight terminal CLI live monitor mode")

@@ -1,11 +1,11 @@
-# PC Performance Tracker
+# PC Performance Tracker (AnyOS)
 
-[![Auto-Build](https://github.com/Marwanthe0/PC-Performance-Tracker/actions/workflows/auto-build.yml/badge.svg)](https://github.com/Marwanthe0/PC-Performance-Tracker/actions)
+[![Auto-Build](https://github.com/Marwanthe0/Performance-Tracker-AnyOS/actions/workflows/auto-build.yml/badge.svg)](https://github.com/Marwanthe0/Performance-Tracker-AnyOS/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A high-performance, real-time system performance monitor designed to run seamlessly on **any personal OS** — **Windows**, **macOS**, and **Linux** (including Ubuntu and GNOME).
 
-It tracks and displays live **CPU**, **RAM**, **Network Throughput**, and **Disk I/O** directly in your desktop top bar or system tray, accompanied by an always-on floating desktop HUD bar and a full cyber-styled real-time GUI Dashboard window.
+It tracks and displays live **CPU**, **RAM**, **GPU**, **Network Throughput (Upload & Download)**, **Disk I/O (Read & Write)**, **Multi-Drive Partitions**, and **Battery Health** directly in your desktop top bar or system tray, accompanied by an always-on floating desktop HUD bar and a full cyber-styled real-time GUI Dashboard window.
 
 ---
 
